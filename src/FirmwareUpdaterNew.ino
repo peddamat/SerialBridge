@@ -20,114 +20,6 @@
 #include <WiFi101.h>
 #include <spi_flash/include/spi_flash.h>
 
-typedef struct __attribute__((__packed__)) {
-    uint8_t command;
-    uint32_t address;
-    uint32_t arg1;
-    uint16_t payloadLength;
-
-    // payloadLenght bytes of data follows...
-} UartPacket;
-
-static const int MAX_PAYLOAD_SIZE = 1024 * 8;
-
-#define CMD_READ_FLASH 0x01
-#define CMD_WRITE_FLASH 0x02
-#define CMD_ERASE_FLASH 0x03
-#define CMD_MAX_PAYLOAD_SIZE 0x50
-#define CMD_HELLO 0x99
-
-void setup() {
-    WiFi.setPins(8, 7, 4, 2);
-
-    Serial.begin(115200);
-
-    nm_bsp_init();
-    if (m2m_wifi_download_mode() != M2M_SUCCESS) {
-        Serial.println(F("Failed to put the WiFi module in download mode"));
-        while (true)
-            ;
-    }
-}
-
-void receivePacket(UartPacket *pkt, uint8_t *payload) {
-    // Read command
-    uint8_t *p = reinterpret_cast<uint8_t *>(pkt);
-    uint16_t l = sizeof(UartPacket);
-    while (l > 0) {
-        int c = Serial.read();
-        if (c == -1)
-            continue;
-        *p++ = c;
-        l--;
-    }
-
-    // Convert parameters from network byte order to cpu byte order
-    pkt->address = fromNetwork32(pkt->address);
-    pkt->arg1 = fromNetwork32(pkt->arg1);
-    pkt->payloadLength = fromNetwork16(pkt->payloadLength);
-
-    // Read payload
-    l = pkt->payloadLength;
-    while (l > 0) {
-        int c = Serial.read();
-        if (c == -1)
-            continue;
-        *payload++ = c;
-        l--;
-    }
-}
-
-// Allocated statically so the compiler can tell us
-// about the amount of used RAM
-static UartPacket pkt;
-static uint8_t payload[MAX_PAYLOAD_SIZE];
-
-void loop() {
-    receivePacket(&pkt, payload);
-
-    if (pkt.command == CMD_HELLO) {
-        if (pkt.address == 0x11223344 && pkt.arg1 == 0x55667788)
-            Serial.print("v10000");
-    }
-
-    if (pkt.command == CMD_MAX_PAYLOAD_SIZE) {
-        uint16_t res = toNetwork16(MAX_PAYLOAD_SIZE);
-        Serial.write(reinterpret_cast<uint8_t *>(&res), sizeof(res));
-    }
-
-    if (pkt.command == CMD_READ_FLASH) {
-        uint32_t address = pkt.address;
-        uint32_t len = pkt.arg1;
-        if (spi_flash_read(payload, address, len) != M2M_SUCCESS) {
-            Serial.println("ER");
-        } else {
-            Serial.write(payload, len);
-            Serial.print("OK");
-        }
-    }
-
-    if (pkt.command == CMD_WRITE_FLASH) {
-        uint32_t address = pkt.address;
-        uint32_t len = pkt.payloadLength;
-        if (spi_flash_write(payload, address, len) != M2M_SUCCESS) {
-            Serial.print("ER");
-        } else {
-            Serial.print("OK");
-        }
-    }
-
-    if (pkt.command == CMD_ERASE_FLASH) {
-        uint32_t address = pkt.address;
-        uint32_t len = pkt.arg1;
-        if (spi_flash_erase(address, len) != M2M_SUCCESS) {
-            Serial.print("ER");
-        } else {
-            Serial.print("OK");
-        }
-    }
-}
-
 // #include <asf.h>
 #include "common/include/nm_common.h"
 #include "bus_wrapper/include/nm_bus_wrapper.h"
@@ -139,18 +31,6 @@ void loop() {
 #ifndef MIN
 #define MIN(x, y) (x > y) ? y : x
 #endif
-
-enum cmd_err_code {
-	CMD_ERR_NO_ERROR = 0,
-	CMD_ERR_INTERNAL_ERROR,
-	CMD_ERR_INVALID_FRAME,
-};
-
-struct uart_cmd_hdr {
-	uint32_t cmd;
-	uint32_t addr;
-	uint32_t val;
-};
 
 enum cmd_err_code {
 	CMD_ERR_NO_ERROR = 0,
@@ -407,4 +287,198 @@ static sint8 enter_wifi_firmware_download(void)
 		usart_frame_parse(usart_data, usart_size);
 	}
 	return ret;
+}
+
+static uint8_t usart_buffer[USART_BUFFER_MAX];
+static uint32_t usart_recv_size = 0;
+
+void configure_usart(uint32_t baudrate)
+{
+	// usart_serial_options_t uart_serial_options = {
+	// 	.baudrate = baudrate,
+	// 	.paritytype = CONF_UART_PARITY,
+	// 	.charlength = US_MR_CHRL_8_BIT,
+	// 	.stopbits = 0,
+	// };
+
+	// /* Configure the UART console. */
+	// usart_serial_init((usart_if)CONF_UART, &uart_serial_options);
+    Serial.begin(baudrate);
+    Serial.flush();
+
+	usart_stream_reset();
+}
+
+void usart_stream_reset(void)
+{
+// #ifdef SAMG55
+// 	usart_reset_rx((Usart *)CONF_UART);
+// 	usart_enable_rx((Usart *)CONF_UART);
+// #else
+// 	uart_reset((Uart *)CONF_UART);
+// 	uart_enable((Uart *)CONF_UART);
+// #endif
+	usart_recv_size = 0;
+}
+
+void usart_stream_write(uint8_t data)
+{
+    Serial.write(data);
+// 	usart_serial_putchar((usart_if)CONF_UART, data);
+// #ifdef SAMG55
+// 	while (!usart_is_tx_empty((Usart *)CONF_UART)) {
+// #else
+// 	while (!uart_is_tx_buf_empty((Uart *)CONF_UART)) {
+// #endif
+// 	}
+}
+
+void usart_stream_write_buffer(uint8_t *data, uint32_t size)
+{
+    Serial.write(data, size);
+
+	// for (uint32_t i = 0; i < size; i++) {
+	// 	usart_serial_putchar((usart_if)CONF_UART, data[i]);
+	// }
+}
+
+int usart_stream_read(uint8_t **data, uint32_t *size)
+{
+// #ifdef SAMG55
+// 	uint32_t val;
+
+// 	while (usart_recv_size < sizeof(usart_buffer) && usart_read((Usart *)CONF_UART, &val) == 0) {
+// #else
+	uint8_t val;
+    val = Serial.read();
+
+	while (usart_recv_size < sizeof(usart_buffer) && (val != -1)) {
+// #endif
+		usart_buffer[usart_recv_size++] = val;
+        val = Serial.read();
+	}
+
+	*data = usart_buffer;
+	*size = usart_recv_size;
+
+	return 0;
+}
+
+void usart_stream_move(uint32_t offset)
+{
+	usart_recv_size -= offset;
+	if (usart_recv_size > 0) {
+		memmove(usart_buffer, usart_buffer + offset, usart_recv_size);
+	} else {
+		usart_recv_size = 0;
+	}
+}
+
+
+typedef struct __attribute__((__packed__)) {
+    uint8_t command;
+    uint32_t address;
+    uint32_t arg1;
+    uint16_t payloadLength;
+
+    // payloadLenght bytes of data follows...
+} UartPacket;
+
+static const int MAX_PAYLOAD_SIZE = 1024 * 8;
+
+#define CMD_READ_FLASH 0x01
+#define CMD_WRITE_FLASH 0x02
+#define CMD_ERASE_FLASH 0x03
+#define CMD_MAX_PAYLOAD_SIZE 0x50
+#define CMD_HELLO 0x99
+
+void setup() {
+    WiFi.setPins(8, 7, 4, 2);
+
+    Serial.begin(115200);
+
+    nm_bsp_init();
+    if (m2m_wifi_download_mode() != M2M_SUCCESS) {
+        Serial.println(F("Failed to put the WiFi module in download mode"));
+        while (true)
+            ;
+    }
+}
+
+void receivePacket(UartPacket *pkt, uint8_t *payload) {
+    // Read command
+    uint8_t *p = reinterpret_cast<uint8_t *>(pkt);
+    uint16_t l = sizeof(UartPacket);
+    while (l > 0) {
+        int c = Serial.read();
+        if (c == -1)
+            continue;
+        *p++ = c;
+        l--;
+    }
+
+    // Convert parameters from network byte order to cpu byte order
+    pkt->address = fromNetwork32(pkt->address);
+    pkt->arg1 = fromNetwork32(pkt->arg1);
+    pkt->payloadLength = fromNetwork16(pkt->payloadLength);
+
+    // Read payload
+    l = pkt->payloadLength;
+    while (l > 0) {
+        int c = Serial.read();
+        if (c == -1)
+            continue;
+        *payload++ = c;
+        l--;
+    }
+}
+
+// Allocated statically so the compiler can tell us
+// about the amount of used RAM
+static UartPacket pkt;
+static uint8_t payload[MAX_PAYLOAD_SIZE];
+
+void loop() {
+    receivePacket(&pkt, payload);
+
+    if (pkt.command == CMD_HELLO) {
+        if (pkt.address == 0x11223344 && pkt.arg1 == 0x55667788)
+            Serial.print("v10000");
+    }
+
+    if (pkt.command == CMD_MAX_PAYLOAD_SIZE) {
+        uint16_t res = toNetwork16(MAX_PAYLOAD_SIZE);
+        Serial.write(reinterpret_cast<uint8_t *>(&res), sizeof(res));
+    }
+
+    if (pkt.command == CMD_READ_FLASH) {
+        uint32_t address = pkt.address;
+        uint32_t len = pkt.arg1;
+        if (spi_flash_read(payload, address, len) != M2M_SUCCESS) {
+            Serial.println("ER");
+        } else {
+            Serial.write(payload, len);
+            Serial.print("OK");
+        }
+    }
+
+    if (pkt.command == CMD_WRITE_FLASH) {
+        uint32_t address = pkt.address;
+        uint32_t len = pkt.payloadLength;
+        if (spi_flash_write(payload, address, len) != M2M_SUCCESS) {
+            Serial.print("ER");
+        } else {
+            Serial.print("OK");
+        }
+    }
+
+    if (pkt.command == CMD_ERASE_FLASH) {
+        uint32_t address = pkt.address;
+        uint32_t len = pkt.arg1;
+        if (spi_flash_erase(address, len) != M2M_SUCCESS) {
+            Serial.print("ER");
+        } else {
+            Serial.print("OK");
+        }
+    }
 }
