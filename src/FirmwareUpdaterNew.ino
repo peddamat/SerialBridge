@@ -261,32 +261,21 @@ static void usart_frame_parse(uint8_t *buffer, uint8_t size)
 	}
 }
 
+sint8 ret;
+uint8_t *usart_data;
+uint32_t usart_size;
+
 /**
  * \brief Process input UART command and forward to SPI.
  */
-static sint8 enter_wifi_firmware_download(void)
+void loop(void)
 {
-	sint8 ret;
-	uint8_t *usart_data;
-	uint32_t usart_size;
-
-	ret = m2m_wifi_download_mode();
-	if (ret != M2M_SUCCESS) {
-		puts("Failed to put the WiFi Chip in download mode!\n");
-		return M2M_ERR_INIT;
-	}
-
-	usart_stream_reset();
-
 	/* Process UART input command and forward to SPI. */
-	while (1) {
-		if (usart_stream_read(&usart_data, &usart_size) != 0) {
-			continue;
-		}
+    if (usart_stream_read(&usart_data, &usart_size) != 0) {
+        return;
+    }
 
-		usart_frame_parse(usart_data, usart_size);
-	}
-	return ret;
+    usart_frame_parse(usart_data, usart_size);
 }
 
 static uint8_t usart_buffer[USART_BUFFER_MAX];
@@ -438,7 +427,7 @@ void receivePacket(UartPacket *pkt, uint8_t *payload) {
 static UartPacket pkt;
 static uint8_t payload[MAX_PAYLOAD_SIZE];
 
-void loop() {
+void loop2() {
     receivePacket(&pkt, payload);
 
     if (pkt.command == CMD_HELLO) {
