@@ -20,17 +20,13 @@
 #include <WiFi101.h>
 #include <spi_flash/include/spi_flash.h>
 
-// #include <asf.h>
 #include "common/include/nm_common.h"
 #include "bus_wrapper/include/nm_bus_wrapper.h"
 #include "driver/source/nmbus.h"
 #include "driver/include/m2m_wifi.h"
-#include "usart_stream.h"
 #include <string.h>
 
-#ifndef MIN
-#define MIN(x, y) (x > y) ? y : x
-#endif
+#define USART_BUFFER_MAX (2 * 1024)
 
 enum cmd_err_code {
 	CMD_ERR_NO_ERROR = 0,
@@ -268,18 +264,8 @@ uint32_t usart_size;
 static uint8_t usart_buffer[USART_BUFFER_MAX];
 static uint32_t usart_recv_size = 0;
 
-
 void configure_usart(uint32_t baudrate)
 {
-	// usart_serial_options_t uart_serial_options = {
-	// 	.baudrate = baudrate,
-	// 	.paritytype = CONF_UART_PARITY,
-	// 	.charlength = US_MR_CHRL_8_BIT,
-	// 	.stopbits = 0,
-	// };
-
-	// /* Configure the UART console. */
-	// usart_serial_init((usart_if)CONF_UART, &uart_serial_options);
     Serial.begin(baudrate);
     Serial.flush();
 
@@ -288,45 +274,17 @@ void configure_usart(uint32_t baudrate)
 
 void usart_stream_reset(void)
 {
-// #ifdef SAMG55
-// 	usart_reset_rx((Usart *)CONF_UART);
-// 	usart_enable_rx((Usart *)CONF_UART);
-// #else
-// 	uart_reset((Uart *)CONF_UART);
-// 	uart_enable((Uart *)CONF_UART);
-// #endif
 	usart_recv_size = 0;
 }
 
 void usart_stream_write(uint8_t data)
 {
     Serial.write(data);
-// 	usart_serial_putchar((usart_if)CONF_UART, data);
-// #ifdef SAMG55
-// 	while (!usart_is_tx_empty((Usart *)CONF_UART)) {
-// #else
-// 	while (!uart_is_tx_buf_empty((Uart *)CONF_UART)) {
-// #endif
-// 	}
 }
 
 void usart_stream_write_buffer(uint8_t *data, uint32_t size)
 {
     Serial.write(data, size);
-
-	// for (uint32_t i = 0; i < size; i++) {
-	// 	usart_serial_putchar((usart_if)CONF_UART, data[i]);
-	// }
-}
-
-
-/**
- * \brief Process input UART command and forward to SPI.
- */
-void loop(void)
-{
-    usart_stream_read(&usart_data, &usart_size);
-    usart_frame_parse(usart_buffer, usart_recv_size);
 }
 
 int usart_stream_read(uint8_t **data, uint32_t *size)
@@ -348,16 +306,10 @@ int usart_stream_read(uint8_t **data, uint32_t *size)
 
 int usart_stream_read2(uint8_t **data, uint32_t *size)
 {
-// #ifdef SAMG55
-// 	uint32_t val;
-
-// 	while (usart_recv_size < sizeof(usart_buffer) && usart_read((Usart *)CONF_UART, &val) == 0) {
-// #else
 	uint8_t val;
     val = Serial.read();
 
 	while (usart_recv_size < sizeof(usart_buffer) && (val != -1)) {
-// #endif
 		usart_buffer[usart_recv_size++] = val;
         val = Serial.read();
 	}
@@ -394,7 +346,7 @@ static void toggleLed()
     digitalWrite(13, mode);
 }
 
-void toggleLoop(int c) {
+void flashLed(int c) {
     for (int i = 0; i <= c; i++)
     {
         toggleLed();
@@ -417,9 +369,15 @@ void setup() {
             ;
     }
 
-    // Blink LED so we know things good so far...
-    for (int i = 0; i < 4; i++) {
-        toggleLed();
-        delay(1000);              // wait for a second
-    }
+    // Flash the LED so we know we good...
+    flashLed(5);
+}
+
+/**
+ * \brief Process input UART command and forward to SPI.
+ */
+void loop(void)
+{
+    usart_stream_read(&usart_data, &usart_size);
+    usart_frame_parse(usart_buffer, usart_recv_size);
 }
