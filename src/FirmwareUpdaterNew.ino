@@ -347,6 +347,10 @@ int usart_stream_read(uint8_t **data, uint32_t *size)
         val = Serial.read();
 	}
 
+    for (int i = 0; i < 5; i++) {
+        toggleLed();
+        delay(300);
+    }
 	*data = usart_buffer;
 	*size = usart_recv_size;
 
@@ -363,7 +367,22 @@ void usart_stream_move(uint32_t offset)
 	}
 }
 
+char mode = HIGH;
+static void toggleLed()
+{
+    if (mode == HIGH) {
+        mode = LOW;
+    }
+    else {
+        mode = HIGH;
+    }
+    digitalWrite(13, mode);
+}
+
 void setup() {
+    // Setup LED pin
+    pinMode(13, OUTPUT);
+
     WiFi.setPins(8, 7, 4, 2);
 
     Serial.begin(115200);
@@ -373,5 +392,11 @@ void setup() {
         Serial.println(F("Failed to put the WiFi module in download mode"));
         while (true)
             ;
+    }
+
+    // Blink LED so we know things good so far...
+    for (int i = 0; i < 4; i++) {
+        toggleLed();
+        delay(1000);              // wait for a second
     }
 }
