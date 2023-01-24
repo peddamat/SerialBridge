@@ -320,17 +320,19 @@ void usart_stream_write_buffer(uint8_t *data, uint32_t size)
 }
 
 
-bool gotSome = false;
 /**
  * \brief Process input UART command and forward to SPI.
  */
 void loop(void)
 {
-    uint8_t val;
+    usart_stream_read(&usart_data, &usart_size);
+    usart_frame_parse(usart_buffer, usart_recv_size);
+}
 
+int usart_stream_read(uint8_t **data, uint32_t *size)
+{
     while (Serial.available())
     {
-        gotSome = true;
         usart_buffer[usart_recv_size++] = Serial.read();
 
         if (usart_recv_size == sizeof(usart_buffer)) {
@@ -338,15 +340,13 @@ void loop(void)
         }
     }
 
-    if (gotSome)
-    {
-        gotSome = false;
-        usart_frame_parse(usart_buffer, usart_recv_size);
-    }
+	*data = usart_buffer;
+	*size = usart_recv_size;
+
+    return 0;
 }
 
-
-int usart_stream_read(uint8_t **data, uint32_t *size)
+int usart_stream_read2(uint8_t **data, uint32_t *size)
 {
 // #ifdef SAMG55
 // 	uint32_t val;
