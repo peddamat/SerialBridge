@@ -265,21 +265,9 @@ sint8 ret;
 uint8_t *usart_data;
 uint32_t usart_size;
 
-/**
- * \brief Process input UART command and forward to SPI.
- */
-void loop(void)
-{
-	/* Process UART input command and forward to SPI. */
-    if (usart_stream_read(&usart_data, &usart_size) != 0) {
-        return;
-    }
-
-    usart_frame_parse(usart_data, usart_size);
-}
-
 static uint8_t usart_buffer[USART_BUFFER_MAX];
 static uint32_t usart_recv_size = 0;
+
 
 void configure_usart(uint32_t baudrate)
 {
@@ -331,6 +319,33 @@ void usart_stream_write_buffer(uint8_t *data, uint32_t size)
 	// }
 }
 
+
+bool gotSome = false;
+/**
+ * \brief Process input UART command and forward to SPI.
+ */
+void loop(void)
+{
+    uint8_t val;
+
+    while (Serial.available())
+    {
+        gotSome = true;
+        usart_buffer[usart_recv_size++] = Serial.read();
+
+        if (usart_recv_size == sizeof(usart_buffer)) {
+            break;
+        }
+    }
+
+    if (gotSome)
+    {
+        gotSome = false;
+        usart_frame_parse(usart_buffer, usart_recv_size);
+    }
+}
+
+
 int usart_stream_read(uint8_t **data, uint32_t *size)
 {
 // #ifdef SAMG55
@@ -377,6 +392,14 @@ static void toggleLed()
         mode = HIGH;
     }
     digitalWrite(13, mode);
+}
+
+void toggleLoop(int c) {
+    for (int i = 0; i <= c; i++)
+    {
+        toggleLed();
+        delay(200);
+    }
 }
 
 void setup() {
